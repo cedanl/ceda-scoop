@@ -1,0 +1,11 @@
+Package: rScoopTemplate
+Title: R Project Template with Scoop Installation
+Version: 0.0.0.9000
+Authors@R:
+    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+Description: A template for structuring R projects with a Scoop-based
+    installation script for easy local setup on Windows.
+License: Apache License (>= 2)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
