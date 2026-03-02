@@ -1,6 +1,20 @@
 # ceda-scoop
 ✅ [TEMPLATE] - Centrale repository voor het beheren en installeren van Python & R dependencies van CEDA-producten, zonder dat adminrechten vereist zijn.
 
+## Gebruik
+1. Voer één van de onderstaande scripts uit:
+
+### Installeren (en Terminal UI openen)
+
+```cmd
+scoop-install.cmd
+```
+
+### Deïnstalleren
+```cmd
+scoop-uninstall.cmd
+```
+
 ## Plan van Aanpak
 
 ### Core
