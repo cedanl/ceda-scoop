@@ -1,2 +1,2 @@
-# r-scoop-template
-✅ [TEMPLATE] -Repository voor een R project met scoop script om eenvoudig lokaal te installeren
+# ceda-scoop
+✅ [TEMPLATE] - Centrale repository voor het beheren en installeren van Python & R dependencies van CEDA-producten, zonder dat adminrechten vereist zijn.
