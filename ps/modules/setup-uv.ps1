@@ -80,10 +80,8 @@ function Get-UvExtras {
 
     $content = Get-Content $pyproject -Raw
 
-    # Zoek [project.optional-dependencies] sectie
     if ($content -notmatch '\[project\.optional-dependencies\]') { return @() }
 
-    # Extraheer alle groepnamen (regels met "naam = [")
     $extras = @()
     $inSection = $false
 
@@ -92,9 +90,7 @@ function Get-UvExtras {
             $inSection = $true
             continue
         }
-        # Stop bij volgende sectie
         if ($inSection -and $line -match '^\[') { break }
-
         if ($inSection -and $line -match '^\s*(\w+)\s*=\s*\[') {
             $name = $matches[1]
             if ($name -ne "dev") { $extras += $name }
@@ -102,6 +98,48 @@ function Get-UvExtras {
     }
 
     return $extras
+}
+
+# ── Vraag gebruiker of Python processen gestopt mogen worden ──
+function Invoke-KillPythonPrompt {
+    Write-Host ""
+    Write-Host "Kon bestanden niet verwijderen - een Python process heeft ze nog open." -ForegroundColor Red
+    Write-Host "Wil je alle actieve Python processen stoppen en opnieuw proberen?" -ForegroundColor Yellow
+    Write-Host "  [J] Ja, stop processen" -ForegroundColor Cyan
+    Write-Host "  [N] Nee, annuleren" -ForegroundColor Gray
+    $keuze = Read-Host "Keuze (J/N)"
+
+    if ($keuze -eq "j") {
+        Write-Host "Python processen stoppen..." -ForegroundColor Yellow
+        Get-Process -Name "python*", "pythonw*" -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Milliseconds 500
+        return $true
+    }
+
+    return $false
+}
+
+# ── Verwijder map met fallback naar kill-prompt ──
+function Remove-DirectoryWithFallback {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return $true }
+
+    try {
+        Remove-Item -Recurse -Force $Path -ErrorAction Stop
+        return $true
+    } catch {
+        $kill = Invoke-KillPythonPrompt
+        if (-not $kill) { return $false }
+
+        try {
+            Remove-Item -Recurse -Force $Path -ErrorAction Stop
+            return $true
+        } catch {
+            Write-Host "Verwijderen mislukt ook na stoppen van processen: $_" -ForegroundColor Red
+            return $false
+        }
+    }
 }
 
 # ── Entry-point zoeken en project starten ──
@@ -155,19 +193,29 @@ function Start-UvProject {
         uv sync @syncArgs
         $syncExit = $LASTEXITCODE
 
-        # Poging 2: .venv verwijderen
+        # Poging 2: .venv verwijderen met kill-prompt als fallback
         if ($syncExit -ne 0) {
             Write-Host "Sync mislukt, .venv verwijderen en opnieuw proberen..." -ForegroundColor Yellow
             $venvPath = Join-Path $Root ".venv"
-            if (Test-Path $venvPath) { Remove-Item -Recurse -Force $venvPath }
+            $removed = Remove-DirectoryWithFallback -Path $venvPath
+            if (-not $removed) {
+                Pop-Location
+                return [PSCustomObject]@{ Success = $false; Message = "Kon .venv niet verwijderen, sync gestopt." }
+            }
             uv sync @syncArgs
             $syncExit = $LASTEXITCODE
         }
 
-        # Poging 3: uv cache clean
+        # Poging 3: uv cache clean + .uv_cache verwijderen met kill-prompt als fallback
         if ($syncExit -ne 0) {
             Write-Host "Sync mislukt, uv cache legen en opnieuw proberen..." -ForegroundColor Yellow
             uv cache clean 2>&1 | Out-Null
+            $cachePath = Join-Path $Root ".uv_cache"
+            $removed = Remove-DirectoryWithFallback -Path $cachePath
+            if (-not $removed) {
+                Pop-Location
+                return [PSCustomObject]@{ Success = $false; Message = "Kon .uv_cache niet verwijderen, sync gestopt." }
+            }
             uv sync @syncArgs
             $syncExit = $LASTEXITCODE
         }
@@ -177,7 +225,7 @@ function Start-UvProject {
         if ($syncExit -ne 0) {
             return [PSCustomObject]@{
                 Success = $false
-                Message = "uv sync mislukt na 3 pogingen. Probeer 'uv cache purge' handmatig en start opnieuw."
+                Message = "uv sync mislukt na 3 pogingen. Probeer 'uv cache prune' handmatig en start opnieuw."
             }
         }
 
