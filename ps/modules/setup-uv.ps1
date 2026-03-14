@@ -1,6 +1,6 @@
 # setup-uv.ps1
 # Installeert uv (via Scoop) en start een uv-project op.
-# Exporteert: Install-UV, Set-UvCacheDir, Start-UvProject
+# Exporteert: Install-UV, Set-UvCacheDir, Get-UvExtras, Start-UvProject
 
 # ── uv installeren ──
 function Install-UV {
@@ -47,28 +47,61 @@ function Set-UvCacheDir {
 
     # Geval 1: [tool.uv] + correcte cache-dir → niets doen
     if ($content -match '\[tool\.uv\]' -and $content -match $correctPattern) {
-        return [PSCustomObject]@{ Success = $true; Message = "uv cache-dir al correct geconfigureerd, overgeslagen" }
+        return [PSCustomObject]@{ Success = $true; Message = "cache-dir al correct ingesteld in pyproject.toml, overgeslagen" }
     }
 
     # Geval 2: [tool.uv] + andere/incomplete cache-dir → vervangen
     if ($content -match '\[tool\.uv\]' -and $content -match 'cache-dir') {
         $content = $content -replace 'cache-dir\s*=\s*"[^"]*"', $correctValue
         Set-Content $pyproject $content -NoNewline
-        return [PSCustomObject]@{ Success = $true; Message = "Bestaande cache-dir vervangen door correcte waarde" }
+        return [PSCustomObject]@{ Success = $true; Message = "Bestaande cache-dir in pyproject.toml vervangen door correcte waarde" }
     }
 
     # Geval 3: [tool.uv] zonder cache-dir → toevoegen onder de sectie
     if ($content -match '\[tool\.uv\]') {
         $content = $content -replace '(\[tool\.uv\])', "`$1`n$correctValue"
         Set-Content $pyproject $content -NoNewline
-        return [PSCustomObject]@{ Success = $true; Message = "cache-dir toegevoegd aan bestaande [tool.uv] sectie" }
+        return [PSCustomObject]@{ Success = $true; Message = "cache-dir toegevoegd aan [tool.uv] sectie in pyproject.toml" }
     }
 
     # Geval 4: [tool.uv] bestaat niet → bovenaan toevoegen
     $insert = "[tool.uv]`n$correctValue`n`n"
     $content = $insert + $content
     Set-Content $pyproject $content -NoNewline
-    return [PSCustomObject]@{ Success = $true; Message = "[tool.uv] sectie met cache-dir bovenaan toegevoegd" }
+    return [PSCustomObject]@{ Success = $true; Message = "[tool.uv] sectie met cache-dir toegevoegd aan pyproject.toml" }
+}
+
+# ── Lees optional-dependencies uit pyproject.toml, filter 'dev' eruit ──
+function Get-UvExtras {
+    param([string]$Root)
+
+    $pyproject = Join-Path $Root "pyproject.toml"
+    if (-not (Test-Path $pyproject)) { return @() }
+
+    $content = Get-Content $pyproject -Raw
+
+    # Zoek [project.optional-dependencies] sectie
+    if ($content -notmatch '\[project\.optional-dependencies\]') { return @() }
+
+    # Extraheer alle groepnamen (regels met "naam = [")
+    $extras = @()
+    $inSection = $false
+
+    foreach ($line in ($content -split "`n")) {
+        if ($line -match '^\[project\.optional-dependencies\]') {
+            $inSection = $true
+            continue
+        }
+        # Stop bij volgende sectie
+        if ($inSection -and $line -match '^\[') { break }
+
+        if ($inSection -and $line -match '^\s*(\w+)\s*=\s*\[') {
+            $name = $matches[1]
+            if ($name -ne "dev") { $extras += $name }
+        }
+    }
+
+    return $extras
 }
 
 # ── Entry-point zoeken en project starten ──
@@ -92,32 +125,50 @@ function Start-UvProject {
             return [PSCustomObject]@{ Success = $false; Message = "Geen Python entry-point gevonden in src\ of root" }
         }
 
-        # Cache-dir instellen voor uv sync
+        # Cache-dir instellen en feedback tonen
         $cacheResult = Set-UvCacheDir -Root $Root
-        if (-not $cacheResult.Success) {
-            return $cacheResult
+        Write-Host $cacheResult.Message -ForegroundColor Gray
+        if (-not $cacheResult.Success) { return $cacheResult }
+
+        # Streamlit check + feedback
+        $isStreamlit = Test-IsStreamlitProject -Root $Root
+        if ($isStreamlit) {
+            Write-Host "Streamlit app gedetecteerd, app opent automatisch in de browser..." -ForegroundColor Cyan
+        } else {
+            Write-Host "Python project gedetecteerd, entry-point: $entryPoint" -ForegroundColor Cyan
         }
 
-        # ── uv sync met retry-flow ──
+        # Extras ophalen en sync-argumenten opbouwen
+        $extras = Get-UvExtras -Root $Root
+        $syncArgs = @()
+        foreach ($extra in $extras) { $syncArgs += "--extra"; $syncArgs += $extra }
+
+        if ($extras.Count -gt 0) {
+            Write-Host "Optionele dependencies gevonden: $($extras -join ', ')" -ForegroundColor Gray
+        }
+
+        # ── uv sync (live output) met retry-flow ──
         Push-Location $Root
 
-        $syncOutput = uv sync 2>&1
+        Write-Host ""
+        Write-Host "Packages installeren via uv sync..." -ForegroundColor Yellow
+        uv sync @syncArgs
         $syncExit = $LASTEXITCODE
 
-        # Poging 2: .venv verwijderen en opnieuw proberen
+        # Poging 2: .venv verwijderen
         if ($syncExit -ne 0) {
+            Write-Host "Sync mislukt, .venv verwijderen en opnieuw proberen..." -ForegroundColor Yellow
             $venvPath = Join-Path $Root ".venv"
-            if (Test-Path $venvPath) {
-                Remove-Item -Recurse -Force $venvPath
-            }
-            $syncOutput = uv sync 2>&1
+            if (Test-Path $venvPath) { Remove-Item -Recurse -Force $venvPath }
+            uv sync @syncArgs
             $syncExit = $LASTEXITCODE
         }
 
-        # Poging 3: uv cache clean en opnieuw proberen
+        # Poging 3: uv cache clean
         if ($syncExit -ne 0) {
+            Write-Host "Sync mislukt, uv cache legen en opnieuw proberen..." -ForegroundColor Yellow
             uv cache clean 2>&1 | Out-Null
-            $syncOutput = uv sync 2>&1
+            uv sync @syncArgs
             $syncExit = $LASTEXITCODE
         }
 
@@ -126,12 +177,11 @@ function Start-UvProject {
         if ($syncExit -ne 0) {
             return [PSCustomObject]@{
                 Success = $false
-                Message = "uv sync mislukt na 3 pogingen. Probeer 'uv cache purge' handmatig en start opnieuw. Fout: $syncOutput"
+                Message = "uv sync mislukt na 3 pogingen. Probeer 'uv cache purge' handmatig en start opnieuw."
             }
         }
 
         # Streamlit in nieuw venster, gewone uv run blokkeert bewust
-        $isStreamlit = Test-IsStreamlitProject -Root $Root
         Push-Location $Root
         if ($isStreamlit) {
             Start-Process powershell -ArgumentList "-NoExit", "-Command", "uv run streamlit run $entryPoint"
