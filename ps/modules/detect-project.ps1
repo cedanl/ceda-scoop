@@ -8,14 +8,14 @@ function Get-ProjectType {
     )
 
     $hasR  = Test-Path (Join-Path $Root "renv.lock")
-    $hasUv = (Test-Path (Join-Path $Root "uv.lock")) -or (Test-Path (Join-Path $Root "pyproject.toml"))
+    $hasUv = Test-Path (Join-Path $Root "uv.lock")
 
-    # ── Ambiguïteit: beide gevonden, vraag gebruiker ──
+    # ── Ambiguiteit: beide gevonden, vraag gebruiker ──
     if ($hasR -and $hasUv) {
         Write-Host "Zowel een R- als uv-project gevonden in deze map." -ForegroundColor Yellow
         Write-Host "Welk projecttype wil je gebruiken?" -ForegroundColor Yellow
         Write-Host "  [1] R (renv.lock)"
-        Write-Host "  [2] Python/uv (uv.lock / pyproject.toml)"
+        Write-Host "  [2] Python/uv (uv.lock)"
         $keuze = Read-Host "Keuze (1/2)"
 
         $type = if ($keuze -eq "1") { "r" } elseif ($keuze -eq "2") { "uv" } else {
@@ -43,7 +43,7 @@ function Get-ProjectType {
         return [PSCustomObject]@{
             Type    = "uv"
             Root    = $Root
-            Message = "uv-project gedetecteerd (uv.lock / pyproject.toml gevonden)"
+            Message = "uv-project gedetecteerd (uv.lock gevonden)"
         }
     }
 
