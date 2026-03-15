@@ -1,5 +1,6 @@
 # r-sync.ps1
-# Herstelt renv dependencies via pak met PPM binaries.
+# Herstelt renv dependencies via renv::restore().
+# Configuratie (PPM, binary) via .Rprofile in de repo.
 # Exporteert: Invoke-RenvRestore
 
 function Invoke-RenvRestore {
@@ -10,84 +11,33 @@ function Invoke-RenvRestore {
         return [PSCustomObject]@{ Success = $false; Message = "Geen renv project gevonden (renv/activate.R ontbreekt)" }
     }
 
-    # ── Rtools paden activeren in huidige sessie ──
+    # ── Rtools paden activeren ──
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + $env:PATH
 
-    # ── R restore script via pak + PPM ──
-    $rScript = @"
-# ── Repo configuratie: PPM binaries + CRAN fallback ──
-options(repos = c(
-  PPM  = 'https://packagemanager.posit.co/cran/latest',
-  CRAN = 'https://cloud.r-project.org'
-))
-options(renv.config.ppm.enabled = TRUE)
-options(pkgType = 'binary')
+    # ── R.exe pad via Scoop ──
+    $rExe = "$env:USERPROFILE\scoop\apps\r\current\bin\x64\R.exe"
 
-# ── Parallel cores: totaal - 2, minimaal 1 ──
-ncpus <- max(1, parallel::detectCores() - 2)
-options(Ncpus = ncpus)
-
-# ── renv cache optimalisaties ──
-options(renv.config.cache.symlinks  = TRUE)
-options(renv.config.install.shortcuts = TRUE)
-
-# ── Info ──
-cat('\n=== Environment ===\n')
-cat('R versie     :', as.character(getRversion()), '\n')
-cat('Cores        :', parallel::detectCores(), '| Gebruikt:', ncpus, '\n')
-
-# ── renv activeren ──
-source('renv/activate.R')
-
-# ── pak installeren als het er niet is ──
-if (!requireNamespace('pak', quietly = TRUE)) {
-  cat('\npak installeren...\n')
-  renv::install('pak', prompt = FALSE)
-  cat('pak geinstalleerd\n')
-}
-
-# ── Pak exact restore ──
-if (!file.exists('renv.lock')) stop('renv.lock niet gevonden')
-
-lock <- renv::lockfile_read()
-pkgs <- names(lock[['Packages']])
-
-cat('\n=== Restore ===\n')
-cat('Packages     :', length(pkgs), '\n')
-cat('Cache        :', renv::paths[['cache']](), '\n\n')
-
-start <- Sys.time()
-
-pkg_specs <- sapply(pkgs, function(pkg) {
-  info    <- lock[['Packages']][[pkg]]
-  version <- info[['Version']]
-  source  <- info[['Source']]
-
-  if (source == 'GitHub') {
-    ref <- if (is.null(info[['RemoteRef']])) info[['RemoteSha']] else info[['RemoteRef']]
-    sprintf('%s/%s@%s', info[['RemoteUsername']], info[['RemoteRepo']], ref)
-  } else if (source == 'Bioconductor') {
-    sprintf('bioc::%s@%s', pkg, version)
-  } else {
-    sprintf('%s@%s', pkg, version)
-  }
-})
-
-pak::pkg_install(pkg_specs, ask = FALSE)
-
-elapsed <- round(difftime(Sys.time(), start, units = 'secs'), 1)
-cat('\nRestore klaar in', elapsed, 'seconden\n')
-"@
-
-    # ── Uitvoeren via Rscript ──
-    Push-Location $Root
-    Rscript --vanilla -e $rScript
-    $exitCode = $LASTEXITCODE
-    Pop-Location
-
-    if ($exitCode -ne 0) {
-        return [PSCustomObject]@{ Success = $false; Message = "renv restore mislukt (exit code $exitCode)" }
+    if (-not (Test-Path $rExe)) {
+        return [PSCustomObject]@{ Success = $false; Message = "R.exe niet gevonden op: $rExe" }
     }
 
-    return [PSCustomObject]@{ Success = $true; Message = "renv restore geslaagd via pak" }
+    # ── Tijdelijk R script zonder BOM ──
+    $tempScript = Join-Path $env:TEMP "ceda-renv-restore.R"
+    [System.IO.File]::WriteAllText($tempScript, "renv::restore(prompt = FALSE)", [System.Text.UTF8Encoding]::new($false))
+
+    $process = Start-Process `
+        -FilePath $rExe `
+        -ArgumentList "--no-save", "--no-restore", "--file=$tempScript" `
+        -WorkingDirectory $Root `
+        -Wait `
+        -PassThru `
+        -NoNewWindow
+
+    Remove-Item $tempScript -ErrorAction SilentlyContinue
+
+    if ($process.ExitCode -ne 0) {
+        return [PSCustomObject]@{ Success = $false; Message = "renv restore mislukt (exit code $($process.ExitCode))" }
+    }
+
+    return [PSCustomObject]@{ Success = $true; Message = "renv restore geslaagd" }
 }
