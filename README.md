@@ -18,7 +18,6 @@ Voer daarna vanuit de root van je repo uit:
 CEDA-Start.cmd
 ```
 
-
 ## Plan van Aanpak
 
 ### Core
@@ -35,6 +34,7 @@ CEDA-Start.cmd
 - [ ] Automatisch selecteren / downloaden van production-ready repo's
 - [ ] Versies vastzetten in Scoop
 - [ ] Bovenstaande functionaliteiten uitbreiden naar `/mac` en `/linux` met respectievelijk Homebrew en een nog te bepalen packagemanager
+- [ ] FAQ + ADR (Architecture Decision Record)
 
 #### Extra - r
 - [ ] Instellen Standaard Positron Preferences
