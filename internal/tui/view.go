@@ -27,7 +27,7 @@ func (m Model) View() string {
 }
 
 func (m Model) viewSplash() string {
-	logo := StyleTitle.Render(" CEDA Tools ")
+	logo := StyleTitle.Render(" CEDA Store ")
 	sub := StyleSubtle.Render("Tooling voor Nederlands hoger onderwijs")
 	hint := StyleHelp.Render("Druk op Enter om te beginnen...")
 	return lipgloss.Place(m.width, m.height,
@@ -46,7 +46,7 @@ func (m Model) viewBrowser(library bool) string {
 	}
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
-		StyleTitle.Render(" CEDA Tools "),
+		StyleTitle.Render(" CEDA Store "),
 		"  ",
 		storeTab, libTab,
 	)
@@ -127,7 +127,7 @@ func (m Model) viewInstall() string {
 		return ""
 	}
 
-	header := StyleTitle.Render(" CEDA Tools ")
+	header := StyleTitle.Render(" CEDA Store ")
 	title := StyleBold.Render("Installeren: " + m.selectedRepo.repo.Name)
 
 	var statusLine string
@@ -168,7 +168,7 @@ func (m Model) viewInstall() string {
 }
 
 func (m Model) viewSettings() string {
-	header := StyleTitle.Render(" CEDA Tools — Instellingen ")
+	header := StyleTitle.Render(" CEDA Store — Instellingen ")
 
 	currentPath := m.InstallBase
 	if m.settingsInput != "" {
