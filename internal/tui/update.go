@@ -3,7 +3,6 @@ package tui
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -12,8 +11,6 @@ import (
 
 	"github.com/cedanl/ceda-scoop/internal/runner"
 )
-
-// ── Update ────────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -36,6 +33,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress = pm.(progress.Model)
 		cmds = append(cmds, cmd)
 
+	// ── Install ───────────────────────────────────────────────────────────────
+
 	case installTickMsg:
 		if !m.installDone {
 			m.installElapsed = time.Since(m.installStart)
@@ -51,15 +50,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, installTickCmd())
 		}
 
-	case InstallStepMsg:
-		m.installLog = append(m.installLog, msg.Line)
-		m.logView.SetContent(strings.Join(m.installLog, "\n"))
-		m.logView.GotoBottom()
-
-	case InstallProgressMsg:
-		m.installPercent = msg.Pct
-		cmds = append(cmds, m.progress.SetPercent(msg.Pct))
-
 	case InstallDoneMsg:
 		m.installDone = true
 		m.installErr = msg.Err
@@ -71,6 +61,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.progress.SetPercent(1.0))
 
+	// ── Run — stap voor stap ──────────────────────────────────────────────────
+
+	case runTickMsg:
+		if !m.runDone {
+			m.runElapsed = time.Since(m.runStart)
+			// Progress op basis van voltooide stappen
+			if len(m.runSteps) > 0 {
+				stepPct := float64(m.runCurrentStep) / float64(len(m.runSteps))
+				// Kleine extra voortgang binnen de huidige stap via tijd
+				elapsed := m.runElapsed.Seconds()
+				withinStep := (1 - (1 / (1 + elapsed/10))) * (1.0 / float64(len(m.runSteps))) * 0.8
+				target := stepPct + withinStep
+				if target > float64(m.runCurrentStep+1)/float64(len(m.runSteps)) {
+					target = float64(m.runCurrentStep+1) / float64(len(m.runSteps))
+				}
+				if target > m.runPercent {
+					m.runPercent = target
+					cmds = append(cmds, m.progress.SetPercent(target))
+				}
+			}
+			cmds = append(cmds, runTickCmd())
+		}
+
+	case RunStepDoneMsg:
+		if msg.Err != "" {
+			// Stap mislukt — stop flow, markeer fout
+			m.runDone = true
+			m.runErr = msg.Err
+			m.runFailedStep = msg.StepIdx
+			m.runElapsed = time.Since(m.runStart)
+			cmds = append(cmds, m.progress.SetPercent(float64(msg.StepIdx)/float64(len(m.runSteps))))
+		} else {
+			// Stap geslaagd — naar volgende
+			m.runCurrentStep = msg.StepIdx + 1
+			pct := float64(m.runCurrentStep) / float64(len(m.runSteps))
+			m.runPercent = pct
+			cmds = append(cmds, m.progress.SetPercent(pct))
+
+			if m.runCurrentStep >= len(m.runSteps) {
+				// Alle stappen klaar
+				m.runDone = true
+				m.runElapsed = time.Since(m.runStart)
+				cmds = append(cmds, m.progress.SetPercent(1.0))
+			} else {
+				// Volgende stap starten
+				cmds = append(cmds, doRunStepCmd(m.runCurrentStep, m.runSteps[m.runCurrentStep]))
+			}
+		}
+
+	// ── Delete ────────────────────────────────────────────────────────────────
+
 	case DeleteDoneMsg:
 		if msg.Err == "" {
 			m.refreshItems()
@@ -78,7 +119,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ActiveTab = 0
 			m.CurrentScreen = ScreenStore
 		} else {
-			// Fout tonen — ga terug naar detail
 			m.CurrentScreen = ScreenDetail
 		}
 
@@ -95,14 +135,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	key := msg.String()
 
-	if (key == "ctrl+c" || key == "q") && m.CurrentScreen != ScreenInstall {
+	blocking := m.CurrentScreen == ScreenInstall || m.CurrentScreen == ScreenRun
+	if (key == "ctrl+c" || key == "q") && !blocking {
 		return m, tea.Quit
 	}
 
 	switch m.CurrentScreen {
 
 	case ScreenSplash:
-		// Wacht op Enter — geen auto-timer
 		if key == "enter" || key == " " {
 			m.CurrentScreen = ScreenStore
 		}
@@ -111,7 +151,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		library := m.CurrentScreen == ScreenLibrary
 		items := m.filteredItems()
 		n := len(items)
-
 		switch key {
 		case "tab":
 			if library {
@@ -150,6 +189,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				return m.beginInstall()
 			}
 		case "o":
+			// Openen = run flow
+			if m.selectedRepo != nil && m.selectedRepo.installed {
+				return m.beginRun()
+			}
+		case "f":
+			// Folder openen
 			if m.selectedRepo != nil && m.selectedRepo.installed {
 				runner.OpenInExplorer(m.selectedRepo.installPath)
 			}
@@ -159,25 +204,58 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case ScreenDeleteConfirm:
+	case ScreenProjectTypePicker:
 		switch key {
-		case "y", "enter":
-			if m.selectedRepo != nil {
-				path := m.selectedRepo.installPath
-				return m, doDeleteCmd(path)
+		case "up", "k":
+			m.pickerSelected = 0
+		case "down", "j":
+			m.pickerSelected = 1
+		case "1", "r":
+			m.pickerSelected = 0
+			return m.startRunWithType(runner.ProjectTypeR)
+		case "2", "u":
+			m.pickerSelected = 1
+			return m.startRunWithType(runner.ProjectTypeUV)
+		case "enter":
+			pt := runner.ProjectTypeR
+			if m.pickerSelected == 1 {
+				pt = runner.ProjectTypeUV
 			}
-		case "n", "esc", "b":
+			return m.startRunWithType(pt)
+		case "esc", "b":
 			m.CurrentScreen = ScreenDetail
+		}
+
+	case ScreenRun:
+		if key == "enter" && m.runDone {
+			m.CurrentScreen = ScreenDetail
+			m.runDone = false
+			m.runErr = ""
+			m.runFailedStep = -1
+			m.runCurrentStep = 0
+			m.runSteps = nil
+			m.runPercent = 0
+			m.runElapsed = 0
 		}
 
 	case ScreenInstall:
 		if key == "enter" && m.installDone {
 			m.ActiveTab = 1
 			m.CurrentScreen = ScreenLibrary
-			m.installLog = nil
 			m.installDone = false
+			m.installErr = ""
 			m.installPercent = 0
 			m.installElapsed = 0
+		}
+
+	case ScreenDeleteConfirm:
+		switch key {
+		case "y", "enter":
+			if m.selectedRepo != nil {
+				return m, doDeleteCmd(m.selectedRepo.installPath)
+			}
+		case "n", "esc", "b":
+			m.CurrentScreen = ScreenDetail
 		}
 
 	case ScreenSettings:
@@ -207,12 +285,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// beginInstall initialiseert de installatiestatus en geeft de juiste Cmds terug.
+// ── beginInstall ──────────────────────────────────────────────────────────────
+
 func (m Model) beginInstall() (Model, tea.Cmd) {
 	if m.selectedRepo == nil {
 		return m, nil
 	}
-
 	repo := m.selectedRepo.repo
 	destPath := filepath.Join(m.InstallBase, repo.ID)
 	_ = os.MkdirAll(m.InstallBase, 0755)
@@ -220,7 +298,6 @@ func (m Model) beginInstall() (Model, tea.Cmd) {
 	m.CurrentScreen = ScreenInstall
 	m.installDone = false
 	m.installErr = ""
-	m.installLog = []string{}
 	m.installPercent = 0
 	m.installStart = time.Now()
 	m.installElapsed = 0
@@ -229,5 +306,50 @@ func (m Model) beginInstall() (Model, tea.Cmd) {
 		m.spinner.Tick,
 		installTickCmd(),
 		doInstallCmd(repo.RepoURL, destPath, repo.Script),
+	)
+}
+
+// ── beginRun ──────────────────────────────────────────────────────────────────
+
+func (m Model) beginRun() (Model, tea.Cmd) {
+	if m.selectedRepo == nil {
+		return m, nil
+	}
+	installPath := m.selectedRepo.installPath
+	pt, ambiguous := runner.DetectProjectType(installPath)
+
+	if ambiguous {
+		m.CurrentScreen = ScreenProjectTypePicker
+		m.pickerSelected = 0
+		return m, nil
+	}
+	if pt == runner.ProjectTypeUnknown {
+		// Geen bekend project — toon fout in detail
+		return m, nil
+	}
+	return m.startRunWithType(pt)
+}
+
+func (m Model) startRunWithType(pt runner.ProjectType) (Model, tea.Cmd) {
+	if m.selectedRepo == nil {
+		return m, nil
+	}
+	steps := runner.BuildRunSteps(m.selectedRepo.installPath, pt)
+
+	m.CurrentScreen = ScreenRun
+	m.runSteps = steps
+	m.runCurrentStep = 0
+	m.runDone = false
+	m.runErr = ""
+	m.runFailedStep = -1
+	m.runPercent = 0
+	m.runStart = time.Now()
+	m.runElapsed = 0
+	m.runProjectType = pt
+
+	return m, tea.Batch(
+		m.spinner.Tick,
+		runTickCmd(),
+		doRunStepCmd(0, steps[0]),
 	)
 }

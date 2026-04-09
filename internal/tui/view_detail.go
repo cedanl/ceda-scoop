@@ -27,9 +27,7 @@ func (m Model) viewDetail() string {
 	if descWidth < 30 {
 		descWidth = 30
 	}
-	desc := lipgloss.NewStyle().
-		Foreground(ColorWhite).
-		Width(descWidth).
+	desc := lipgloss.NewStyle().Foreground(ColorWhite).Width(descWidth).
 		Render(wrapText(r.repo.Description, descWidth))
 
 	url := StyleSubtle.Render("⎘  " + r.repo.RepoURL)
@@ -42,6 +40,8 @@ func (m Model) viewDetail() string {
 			"",
 			lipgloss.JoinHorizontal(lipgloss.Top,
 				StyleButton.Render(" [O] Openen "),
+				"  ",
+				StyleButton.Render(" [F] Folder "),
 				"  ",
 				StyleButton.Render(" [U] Updaten "),
 				"  ",

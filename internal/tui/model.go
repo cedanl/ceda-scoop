@@ -14,20 +14,18 @@ import (
 	"github.com/cedanl/ceda-scoop/internal/runner"
 )
 
-// repoItem beschrijft een catalog-item met installatiestatus.
 type repoItem struct {
 	repo        Repo
 	installed   bool
 	installPath string
 }
 
-// Model is de centrale Bubble Tea applicatiestatus.
 type Model struct {
 	CurrentScreen Screen
-	ActiveTab     int // 0 = Store, 1 = Library
+	ActiveTab     int
 
 	repoItems    []repoItem
-	selectedCard int // index in de gefilterde lijst van de huidige tab
+	selectedCard int
 	selectedRepo *repoItem
 	InstallBase  string
 
@@ -35,12 +33,26 @@ type Model struct {
 	progress progress.Model
 	logView  viewport.Model
 
-	installLog     []string
+	// Install
 	installDone    bool
 	installErr     string
 	installPercent float64
 	installStart   time.Time
 	installElapsed time.Duration
+
+	// Run — stap-gebaseerd
+	runSteps       []runner.RunStep // alle stappen voor dit project
+	runCurrentStep int              // welke stap loopt nu (0-indexed)
+	runDone        bool
+	runErr         string          // foutmelding van mislukte stap
+	runFailedStep  int             // index van mislukte stap (-1 = geen)
+	runStart       time.Time
+	runElapsed     time.Duration
+	runPercent     float64
+	runProjectType runner.ProjectType
+
+	// Project type picker (bij ambiguïteit)
+	pickerSelected int // 0 = R, 1 = uv
 
 	settingsInput string
 	editingPath   bool
@@ -61,7 +73,6 @@ func buildRepoItems(base string) []repoItem {
 	return items
 }
 
-// filteredItems geeft de items terug die zichtbaar zijn in de huidige tab.
 func (m Model) filteredItems() []repoItem {
 	if m.ActiveTab == 0 {
 		return m.repoItems
@@ -75,7 +86,6 @@ func (m Model) filteredItems() []repoItem {
 	return out
 }
 
-// InitialModel bouwt het startmodel.
 func InitialModel() Model {
 	base := runner.DefaultInstallBase()
 	items := buildRepoItems(base)
@@ -96,10 +106,9 @@ func InitialModel() Model {
 		spinner:       sp,
 		progress:      prog,
 		logView:       viewport.New(0, 0),
+		runFailedStep: -1,
 	}
 }
-
-// ── Init ──────────────────────────────────────────────────────────────────────
 
 func (m Model) Init() tea.Cmd {
 	return m.spinner.Tick
@@ -116,7 +125,6 @@ func (m *Model) tabScreen() Screen {
 
 func (m *Model) refreshItems() {
 	m.repoItems = buildRepoItems(m.InstallBase)
-	// Clamp selectedCard
 	items := m.filteredItems()
 	if m.selectedCard >= len(items) {
 		m.selectedCard = len(items) - 1
@@ -126,14 +134,22 @@ func (m *Model) refreshItems() {
 	}
 }
 
-// installTickCmd stuurt elke 100ms een tick voor de elapsed timer + progress.
+// ── Tick cmds ─────────────────────────────────────────────────────────────────
+
 func installTickCmd() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return installTickMsg{}
 	})
 }
 
-// doInstallCmd voert clone + bootstrap uit als een echte tea.Cmd.
+func runTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return runTickMsg{}
+	})
+}
+
+// ── Install cmd ───────────────────────────────────────────────────────────────
+
 func doInstallCmd(repoURL, destPath, script string) tea.Cmd {
 	return func() tea.Msg {
 		if err := runner.Clone(repoURL, destPath); err != nil {
@@ -149,12 +165,27 @@ func doInstallCmd(repoURL, destPath, script string) tea.Cmd {
 	}
 }
 
-// doDeleteCmd verwijdert de installmap van een repo.
+// ── Delete cmd ────────────────────────────────────────────────────────────────
+
 func doDeleteCmd(installPath string) tea.Cmd {
 	return func() tea.Msg {
 		if err := os.RemoveAll(installPath); err != nil {
 			return DeleteDoneMsg{Err: err.Error()}
 		}
 		return DeleteDoneMsg{Err: ""}
+	}
+}
+
+// ── Run cmds — één stap per Cmd ───────────────────────────────────────────────
+
+// doRunStepCmd voert één stap uit en stuurt RunStepDoneMsg terug.
+func doRunStepCmd(stepIdx int, step runner.RunStep) tea.Cmd {
+	return func() tea.Msg {
+		err := runner.ExecuteStep(step)
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+		}
+		return RunStepDoneMsg{StepIdx: stepIdx, Err: errStr}
 	}
 }

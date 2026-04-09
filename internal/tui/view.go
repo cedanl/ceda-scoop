@@ -2,7 +2,6 @@ package tui
 
 import "fmt"
 
-// View is het centrale render-punt — delegeert naar het juiste scherm.
 func (m Model) View() string {
 	switch m.CurrentScreen {
 	case ScreenSplash:
@@ -15,15 +14,18 @@ func (m Model) View() string {
 		return m.viewDetail()
 	case ScreenInstall:
 		return m.viewInstall()
+	case ScreenRun:
+		return m.viewRun()
 	case ScreenSettings:
 		return m.viewSettings()
 	case ScreenDeleteConfirm:
 		return m.viewDeleteConfirm()
+	case ScreenProjectTypePicker:
+		return m.viewProjectTypePicker()
 	}
 	return ""
 }
 
-// formatTitle is een gedeelde helper.
 func formatTitle(name, badge string) string {
 	return fmt.Sprintf("%-30s %s", name, badge)
 }
