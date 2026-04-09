@@ -7,7 +7,7 @@ import (
 	"runtime"
 )
 
-// DefaultInstallBase geeft het standaard installatiepad terug (~/<username>/ceda).
+// DefaultInstallBase geeft het standaard installatiepad terug (~/ceda).
 func DefaultInstallBase() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "ceda")
@@ -30,13 +30,13 @@ func OpenInExplorer(path string) {
 // Clone doet een git clone van repoURL naar destPath.
 func Clone(repoURL, destPath string) error {
 	cmd := exec.Command("git", "clone", repoURL, destPath)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	return cmd.Run()
 }
 
 // Bootstrap voert het platform-specifieke setup script uit in repoPath.
-// Op Windows: PowerShell, op macOS/Linux: sh
-// TODO: scripts inbakken via go:embed en tijdelijk uitpakken voor uitvoering
-func Bootstrap(repoPath, scriptName string) error {
+func Bootstrap(repoPath, scriptName string, logCh chan<- string) error {
 	scriptPath := filepath.Join(repoPath, scriptName)
 
 	var cmd *exec.Cmd
