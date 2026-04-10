@@ -33,8 +33,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress = pm.(progress.Model)
 		cmds = append(cmds, cmd)
 
-	// ── Install ───────────────────────────────────────────────────────────────
-
 	case installTickMsg:
 		if !m.installDone {
 			m.installElapsed = time.Since(m.installStart)
@@ -61,20 +59,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.progress.SetPercent(1.0))
 
-	// ── Run — stap voor stap ──────────────────────────────────────────────────
-
 	case runTickMsg:
 		if !m.runDone {
 			m.runElapsed = time.Since(m.runStart)
-			// Progress op basis van voltooide stappen
 			if len(m.runSteps) > 0 {
 				stepPct := float64(m.runCurrentStep) / float64(len(m.runSteps))
-				// Kleine extra voortgang binnen de huidige stap via tijd
 				elapsed := m.runElapsed.Seconds()
 				withinStep := (1 - (1 / (1 + elapsed/10))) * (1.0 / float64(len(m.runSteps))) * 0.8
 				target := stepPct + withinStep
-				if target > float64(m.runCurrentStep+1)/float64(len(m.runSteps)) {
-					target = float64(m.runCurrentStep+1) / float64(len(m.runSteps))
+				cap := float64(m.runCurrentStep+1) / float64(len(m.runSteps))
+				if target > cap {
+					target = cap
 				}
 				if target > m.runPercent {
 					m.runPercent = target
@@ -85,32 +80,60 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case RunStepDoneMsg:
+		installPath := ""
+		if m.selectedRepo != nil {
+			installPath = m.selectedRepo.installPath
+		}
+
 		if msg.Err != "" {
-			// Stap mislukt — stop flow, markeer fout
+			// Stap mislukt
 			m.runDone = true
 			m.runErr = msg.Err
 			m.runFailedStep = msg.StepIdx
 			m.runElapsed = time.Since(m.runStart)
 			cmds = append(cmds, m.progress.SetPercent(float64(msg.StepIdx)/float64(len(m.runSteps))))
+
 		} else {
-			// Stap geslaagd — naar volgende
+			// Stap geslaagd
+
+			// Na detect-stap: breidt stappenlijst uit met type-specifieke stappen
+			if m.runSteps[msg.StepIdx].StepName == "detect" {
+				pt := msg.DetectedType
+				m.runProjectType = pt
+
+				var typeSteps []runner.RunStep
+				switch pt {
+				case runner.ProjectTypeR:
+					typeSteps = runner.RSteps
+				case runner.ProjectTypeUV:
+					typeSteps = runner.UVSteps
+				default:
+					// Onbekend type — stop
+					m.runDone = true
+					m.runErr = "Projecttype niet herkend (geen renv.lock of uv.lock gevonden)"
+					m.runFailedStep = msg.StepIdx
+					m.runElapsed = time.Since(m.runStart)
+					cmds = append(cmds, m.progress.SetPercent(float64(msg.StepIdx)/float64(len(m.runSteps))))
+					break
+				}
+
+				// Voeg type-stappen toe aan de lijst
+				m.runSteps = append(m.runSteps, typeSteps...)
+			}
+
 			m.runCurrentStep = msg.StepIdx + 1
 			pct := float64(m.runCurrentStep) / float64(len(m.runSteps))
 			m.runPercent = pct
 			cmds = append(cmds, m.progress.SetPercent(pct))
 
 			if m.runCurrentStep >= len(m.runSteps) {
-				// Alle stappen klaar
 				m.runDone = true
 				m.runElapsed = time.Since(m.runStart)
 				cmds = append(cmds, m.progress.SetPercent(1.0))
 			} else {
-				// Volgende stap starten
-				cmds = append(cmds, doRunStepCmd(m.runCurrentStep, m.runSteps[m.runCurrentStep]))
+				cmds = append(cmds, doRunStepCmd(m.runCurrentStep, m.runSteps[m.runCurrentStep], installPath))
 			}
 		}
-
-	// ── Delete ────────────────────────────────────────────────────────────────
 
 	case DeleteDoneMsg:
 		if msg.Err == "" {
@@ -129,8 +152,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, tea.Batch(cmds...)
 }
-
-// ── handleKey ─────────────────────────────────────────────────────────────────
 
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	key := msg.String()
@@ -189,12 +210,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				return m.beginInstall()
 			}
 		case "o":
-			// Openen = run flow
 			if m.selectedRepo != nil && m.selectedRepo.installed {
 				return m.beginRun()
 			}
 		case "f":
-			// Folder openen
 			if m.selectedRepo != nil && m.selectedRepo.installed {
 				runner.OpenInExplorer(m.selectedRepo.installPath)
 			}
@@ -202,28 +221,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if m.selectedRepo != nil && m.selectedRepo.installed {
 				m.CurrentScreen = ScreenDeleteConfirm
 			}
-		}
-
-	case ScreenProjectTypePicker:
-		switch key {
-		case "up", "k":
-			m.pickerSelected = 0
-		case "down", "j":
-			m.pickerSelected = 1
-		case "1", "r":
-			m.pickerSelected = 0
-			return m.startRunWithType(runner.ProjectTypeR)
-		case "2", "u":
-			m.pickerSelected = 1
-			return m.startRunWithType(runner.ProjectTypeUV)
-		case "enter":
-			pt := runner.ProjectTypeR
-			if m.pickerSelected == 1 {
-				pt = runner.ProjectTypeUV
-			}
-			return m.startRunWithType(pt)
-		case "esc", "b":
-			m.CurrentScreen = ScreenDetail
 		}
 
 	case ScreenRun:
@@ -285,8 +282,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// ── beginInstall ──────────────────────────────────────────────────────────────
-
 func (m Model) beginInstall() (Model, tea.Cmd) {
 	if m.selectedRepo == nil {
 		return m, nil
@@ -309,32 +304,13 @@ func (m Model) beginInstall() (Model, tea.Cmd) {
 	)
 }
 
-// ── beginRun ──────────────────────────────────────────────────────────────────
-
 func (m Model) beginRun() (Model, tea.Cmd) {
 	if m.selectedRepo == nil {
 		return m, nil
 	}
-	installPath := m.selectedRepo.installPath
-	pt, ambiguous := runner.DetectProjectType(installPath)
 
-	if ambiguous {
-		m.CurrentScreen = ScreenProjectTypePicker
-		m.pickerSelected = 0
-		return m, nil
-	}
-	if pt == runner.ProjectTypeUnknown {
-		// Geen bekend project — toon fout in detail
-		return m, nil
-	}
-	return m.startRunWithType(pt)
-}
-
-func (m Model) startRunWithType(pt runner.ProjectType) (Model, tea.Cmd) {
-	if m.selectedRepo == nil {
-		return m, nil
-	}
-	steps := runner.BuildRunSteps(m.selectedRepo.installPath, pt)
+	// Start altijd met de common stappen — detect breidt later uit
+	steps := append([]runner.RunStep{}, runner.CommonSteps...)
 
 	m.CurrentScreen = ScreenRun
 	m.runSteps = steps
@@ -345,11 +321,13 @@ func (m Model) startRunWithType(pt runner.ProjectType) (Model, tea.Cmd) {
 	m.runPercent = 0
 	m.runStart = time.Now()
 	m.runElapsed = 0
-	m.runProjectType = pt
+	m.runProjectType = runner.ProjectTypeUnknown
+
+	installPath := m.selectedRepo.installPath
 
 	return m, tea.Batch(
 		m.spinner.Tick,
 		runTickCmd(),
-		doRunStepCmd(0, steps[0]),
+		doRunStepCmd(0, steps[0], installPath),
 	)
 }

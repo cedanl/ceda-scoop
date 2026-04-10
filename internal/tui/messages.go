@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/cedanl/ceda-scoop/internal/runner"
+
 // Screen representeert het actieve TUI-scherm.
 type Screen int
 
@@ -15,18 +17,16 @@ const (
 	ScreenProjectTypePicker
 )
 
-// Bubble Tea messages — install
+// Install messages
 type SplashDoneMsg struct{}
-type InstallStepMsg struct{ Line string }
 type InstallDoneMsg struct{ Err string }
-type InstallProgressMsg struct{ Pct float64 }
 type installTickMsg struct{}
 type DeleteDoneMsg struct{ Err string }
 
-// Bubble Tea messages — run
-// RunStepDoneMsg wordt gestuurd als één PS-stap klaar is.
+// Run messages
 type RunStepDoneMsg struct {
-	StepIdx int
-	Err     string // leeg = succes
+	StepIdx      int
+	Err          string
+	DetectedType runner.ProjectType // alleen ingevuld na detect-stap
 }
 type runTickMsg struct{}

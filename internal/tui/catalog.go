@@ -6,11 +6,10 @@ type Repo struct {
 	Name        string
 	Description string
 	RepoURL     string
-	Script      string // naam van het bootstrap script
+	Script      string
 }
 
 // Catalog is de hardcoded lijst van beschikbare CEDA tools.
-// Voeg hier nieuwe repos toe als ze beschikbaar komen.
 var Catalog = []Repo{
 	{
 		ID:          "1cijferho",
@@ -26,5 +25,4 @@ var Catalog = []Repo{
 		RepoURL:     "https://github.com/cedanl/no-fairness-without-awareness.git",
 		Script:      "setup.ps1",
 	},
-	// TODO: voeg hier meer repos toe
 }

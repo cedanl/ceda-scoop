@@ -41,18 +41,18 @@ type Model struct {
 	installElapsed time.Duration
 
 	// Run — stap-gebaseerd
-	runSteps       []runner.RunStep // alle stappen voor dit project
-	runCurrentStep int              // welke stap loopt nu (0-indexed)
+	runSteps       []runner.RunStep
+	runCurrentStep int
 	runDone        bool
-	runErr         string          // foutmelding van mislukte stap
-	runFailedStep  int             // index van mislukte stap (-1 = geen)
+	runErr         string
+	runFailedStep  int
 	runStart       time.Time
 	runElapsed     time.Duration
 	runPercent     float64
-	runProjectType runner.ProjectType
+	runProjectType runner.ProjectType // wordt ingevuld na detect-stap
 
 	// Project type picker (bij ambiguïteit)
-	pickerSelected int // 0 = R, 1 = uv
+	pickerSelected int
 
 	settingsInput string
 	editingPath   bool
@@ -60,8 +60,6 @@ type Model struct {
 	width  int
 	height int
 }
-
-// ── Initialisatie ─────────────────────────────────────────────────────────────
 
 func buildRepoItems(base string) []repoItem {
 	items := make([]repoItem, len(Catalog))
@@ -114,8 +112,6 @@ func (m Model) Init() tea.Cmd {
 	return m.spinner.Tick
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 func (m *Model) tabScreen() Screen {
 	if m.ActiveTab == 1 {
 		return ScreenLibrary
@@ -134,8 +130,6 @@ func (m *Model) refreshItems() {
 	}
 }
 
-// ── Tick cmds ─────────────────────────────────────────────────────────────────
-
 func installTickCmd() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return installTickMsg{}
@@ -147,8 +141,6 @@ func runTickCmd() tea.Cmd {
 		return runTickMsg{}
 	})
 }
-
-// ── Install cmd ───────────────────────────────────────────────────────────────
 
 func doInstallCmd(repoURL, destPath, script string) tea.Cmd {
 	return func() tea.Msg {
@@ -165,8 +157,6 @@ func doInstallCmd(repoURL, destPath, script string) tea.Cmd {
 	}
 }
 
-// ── Delete cmd ────────────────────────────────────────────────────────────────
-
 func doDeleteCmd(installPath string) tea.Cmd {
 	return func() tea.Msg {
 		if err := os.RemoveAll(installPath); err != nil {
@@ -176,16 +166,26 @@ func doDeleteCmd(installPath string) tea.Cmd {
 	}
 }
 
-// ── Run cmds — één stap per Cmd ───────────────────────────────────────────────
-
 // doRunStepCmd voert één stap uit en stuurt RunStepDoneMsg terug.
-func doRunStepCmd(stepIdx int, step runner.RunStep) tea.Cmd {
+// Bij de detect-stap wordt het projecttype uit de output gelezen.
+func doRunStepCmd(stepIdx int, step runner.RunStep, installPath string) tea.Cmd {
 	return func() tea.Msg {
-		err := runner.ExecuteStep(step)
+		output, err := runner.ExecuteStep(step, installPath)
 		errStr := ""
 		if err != nil {
 			errStr = err.Error()
 		}
-		return RunStepDoneMsg{StepIdx: stepIdx, Err: errStr}
+
+		// Lees projecttype uit detect-stap output
+		detectedType := runner.ProjectTypeUnknown
+		if step.StepName == "detect" && err == nil {
+			detectedType = runner.DetectFromOutput(output)
+		}
+
+		return RunStepDoneMsg{
+			StepIdx:      stepIdx,
+			Err:          errStr,
+			DetectedType: detectedType,
+		}
 	}
 }
