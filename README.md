@@ -3,8 +3,6 @@
 
 ## Gebruik
 
-Start de applicatie door op de binary te klikken of via de terminal:
-
 **Windows:** dubbelklik op `ceda-scoop.exe`
 
 **macOS / Linux:** dubbelklik op `ceda-scoop`
