@@ -3,20 +3,9 @@
 
 ## Gebruik
 
-Kopieer de inhoud van de `/windows` map naar de **root van je CEDA repo**:
+**Windows:** dubbelklik op `ceda-scoop.exe`
 
-```
-jouw-repo/
-├── CEDA-Start.cmd        ← gekopieerd uit /windows
-├── CEDA-Remove.cmd       ← gekopieerd uit /windows
-└── modules/              ← gekopieerd uit /windows
-```
-
-Voer daarna vanuit de root van je repo uit:
-
-```cmd
-CEDA-Start.cmd
-```
+**macOS / Linux:** dubbelklik op `ceda-scoop`
 
 ## Plan van Aanpak
 
