@@ -233,7 +233,8 @@ Versies dragen bij aan jobs — elke versie beschrijft wat er gebouwd wordt en w
 | Versie | Thema | Bijdrage aan jobs | Status |
 |---|---|---|---|
 | v0.1.0 | Project scaffolding | M1, M2 | ✅ Klaar |
-| v0.2.0 | TBD | TBD | 🔲 Gepland |
+| v0.2.0 | Foundation — styles, CEDA Store titel, resize, build | U11, M1, M2 | 🔲 Gepland |
+| v0.3.0 | Splash — animatie, muisklik, varianten, ADR | U11, U9 | 🔲 Gepland |
 
 *Versie-bestanden met details: `docs/roadmap/`*
 

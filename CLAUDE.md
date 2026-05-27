@@ -404,6 +404,8 @@ Gedefinieerd in `.claude/skills/`. Aanroepen met `/skill-naam`.
 | `/conventional-commit` | Commit message schrijven tussendoor |
 | `/github-release` | Release publiceren na afgeronde versie |
 | `/git-workflow` | PR voorbereiden, branches opruimen |
+| `/context-mode:grill-with-docs` | Tussen plan en bouwen — toetst plan aan ADRs en domeinmodel, update docs inline |
+| `/dx:handoff` | Einde van sessie — schrijft handoff doc zodat volgende sessie direct doorgaat |
 
 ---
 
