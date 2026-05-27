@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	apiURL  = "https://api.github.com/repos/cedanl/ceda-scoop/releases/latest"
+	apiURL  = "https://api.github.com/repos/cedanl/ceda-store/releases/latest"
 	timeout = 5 * time.Second
 )
 
@@ -92,26 +92,11 @@ func Download(version string) (string, error) {
 }
 
 func assetFilename(version string) string {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-
-	osName := map[string]string{
-		"darwin":  "Darwin",
-		"linux":   "Linux",
-		"windows": "Windows",
-	}[goos]
-
-	archName := map[string]string{
-		"amd64": "x86_64",
-		"arm64": "arm64",
-	}[goarch]
-
 	ext := ".tar.gz"
-	if goos == "windows" {
+	if runtime.GOOS == "windows" {
 		ext = ".zip"
 	}
-
-	return fmt.Sprintf("ceda-scoop_%s_%s_%s%s", version, osName, archName, ext)
+	return fmt.Sprintf("ceda-scoop_%s_%s_%s%s", version, runtime.GOOS, runtime.GOARCH, ext)
 }
 
 func downloadBinary(ctx context.Context, url, currentExe string) (string, error) {

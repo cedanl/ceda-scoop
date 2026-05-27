@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/cedanl/ceda-scoop/internal"
@@ -165,7 +166,7 @@ func (m Model) renderStatusBar(width int) string {
 		gap = 0
 	}
 
-	bar := left + styles.Subtle.Render(fmt.Sprintf("%*s", gap, "")) + right
+	bar := left + strings.Repeat(" ", gap) + right
 	return styles.Body.Width(width).Render(bar)
 }
 
