@@ -77,6 +77,7 @@ scripts/
 
 docs/
   adr/                 # architecture decision records
+  roadmap/             # versie planningen (rolling window)
     001-bubbletea-mvu.md
 
 .claude/
@@ -228,6 +229,102 @@ Release flow: bump versie → `git-cliff` → commit → tag → push → GoRele
 
 ---
 
+## Development Workflow
+
+### Werkmethode
+
+Een combinatie van **iterative development**, **MoSCoW prioritering**, en **timeboxing per versie**:
+
+1. **Brainstorm** — vrij nadenken over wat de volgende versie moet bevatten
+2. **Versie-bestand** — kort planning document in `docs/roadmap/` met MoSCoW structuur:
+   - **Must:** wat er absoluut in moet voor deze release
+   - **Nice-to-have:** wat erbij kan als er tijd over is
+   - **Out of scope:** bewust uitgesteld naar een volgende versie
+3. **Bouwen** — één ding tegelijk afmaken (timeboxing); geen nieuwe scope toevoegen
+4. **Commits tussendoor** — conventional commits tijdens het bouwen, niet aan het einde
+5. **Release** — zodra alles uit de Must-lijst klaar is: `git-cliff` → tag → GoReleaser
+
+> Geen officiële naam, maar de combinatie: iterative development (rolling focus per versie) + MoSCoW (scope afbakening) + timeboxing (één ding tegelijk).
+
+### Versie-bestand formaat
+
+Zie `docs/roadmap/` voor voorbeelden. Kort, scanbaar, geen essays:
+
+```markdown
+# v0.2.0 — <thema>
+
+## Must
+- [ ] feature A
+- [ ] fix B
+
+## Nice-to-have
+- [ ] feature C
+
+## Out of scope
+- feature D → v0.3.0
+```
+
+Current flow (samengevat): `brainstorm → versie-bestand → bouwen → commits tussendoor → release`
+
+### Modern alternatives (reference)
+
+| Pattern | Flow | Best for |
+|---|---|---|
+| **GitHub Flow** | issue → branch → PR → merge main → auto-release | Small teams, continuous delivery |
+| **Conventional Commits + semantic-release** | commit with type prefix → CI bumps version + changelog + release | Fully automated release pipelines |
+| **ADR-first** | brainstorm → ADR → plan → build → commits → release | Projects with significant architecture decisions |
+| **Ship/It loop** | feature flag off → build → merge → flag on → observe | Large teams, continuous deployment |
+
+### Automation gap (next step)
+
+This project already has `git-cliff` + GoReleaser + Conventional Commits. One GitHub Actions workflow closes the loop:
+
+```
+feat/fix commit → push → CI:
+  git-cliff → CHANGELOG.md
+  goreleaser → binaries + GitHub Release
+  version tag bumped automatically
+```
+
+Tools to consider: **`release-please`** (Google) or **`semantic-release`** — both integrate with GitHub Actions and automate the current manual release flow.
+
+---
+
+## Future Recommendations (Out of Scope)
+
+Things worth considering when the project matures — not needed now.
+
+### Branching strategie
+- **Trunk-based development** — direct op `main` committen, geen langlevende feature branches; past bij solo/kleine teams met snelle iteraties
+- **GitHub Flow** — korte feature branches + PR naar `main`; voegt peer review toe zodra het team groeit
+- **GitFlow** — aparte `develop`, `feature/*`, `release/*` branches; overkill voor nu maar relevant als releases strikt gescheiden moeten zijn van development
+
+### CI/CD
+- **GitHub Actions** for automated test + lint + release on push to `main`
+- `golangci-lint` in CI before merge — catches issues earlier than local runs
+- Cross-platform build matrix in CI (`windows`, `darwin`, `linux`) to catch platform regressions
+
+### Release automation
+- `release-please` or `semantic-release` to automate version bumping + changelog + GitHub Release from Conventional Commits
+- Signed binaries via GoReleaser + `cosign` for supply chain integrity
+
+### Distribution
+- Homebrew tap (`homebrew-ceda`) for `brew install ceda-scoop` on Mac/Linux
+- Winget / Scoop manifest for Windows distribution without admin rights
+- Auto-update mechanism in the TUI (check GitHub Releases API on startup)
+
+### Quality
+- `govulncheck` in CI for dependency vulnerability scanning
+- Integration tests that run the actual TUI against a mock script registry
+- E2E smoke test: install the binary, run it, verify it exits cleanly
+
+### Developer experience
+- `devcontainer.json` for reproducible dev environment (Go + tools pre-installed)
+- `pre-commit` hooks for `go vet`, `golangci-lint`, and commit message linting
+- VS Code / Zed workspace settings committed in `.vscode/` / `.zed/`
+
+---
+
 ## MCP Servers
 
 Geconfigureerd in `.mcp.json` (project-scoped, gecommit in repo):
@@ -296,39 +393,17 @@ Voer het volgende uit in volgorde:
 
 ## Skills (Slash Commands)
 
-Gedefinieerd in `.claude/skills/`. Aanroepen met `/skill-naam` of Claude laadt ze automatisch.
+Gedefinieerd in `.claude/skills/`. Aanroepen met `/skill-naam`.
 
-### `/new-feature`
-`.claude/skills/new-feature/SKILL.md`
-```markdown
----
-name: new-feature
-description: Scaffold een nieuwe TUI feature volgens projectconventies.
-invocation: explicit
----
-Voer uit in volgorde:
-1. Maak `internal/views/<naam>.go` aan met Lip Gloss styles bovenaan als package-level vars
-2. Voeg benodigde Msg types toe in `internal/messages.go`
-3. Registreer handler in `Model.Update()` switch in `internal/model.go`
-4. Voeg view toe in `Model.View()` conditional
-5. Conventional commit suggestie: `feat: <beschrijving>`
-```
-
-### `/new-adr`
-`.claude/skills/new-adr/SKILL.md`
-```markdown
----
-name: new-adr
-description: Maak een nieuwe Architecture Decision Record aan.
-invocation: explicit
----
-Maak `docs/adr/00N-<titel>.md` aan met:
-- Datum
-- Status (Proposed / Accepted / Deprecated)
-- Context: waarom is deze beslissing nodig?
-- Beslissing: wat hebben we gekozen?
-- Consequenties: wat zijn de trade-offs?
-```
+| Skill | Wanneer gebruiken |
+|---|---|
+| `/plan-versie` | Begin van een nieuwe iteratie — brainstorm → versie-bestand schrijven |
+| `/bouw` | Start van het bouwen — leest versie-bestand, begeleidt met commits |
+| `/new-feature` | Scaffold een nieuwe TUI feature (model, Msg types, root koppeling) |
+| `/new-adr` | Nieuwe Architecture Decision Record aanmaken |
+| `/conventional-commit` | Commit message schrijven tussendoor |
+| `/github-release` | Release publiceren na afgeronde versie |
+| `/git-workflow` | PR voorbereiden, branches opruimen |
 
 ---
 
@@ -339,6 +414,14 @@ Maak `docs/adr/00N-<titel>.md` aan met:
 - Bij lange sessies: gebruik `/compact` om context te comprimeren zonder te verliezen
 - Subagents draaien in hun eigen context window — gebruik ze voor exploratiewerk
   zodat je main conversation context schoon blijft
+
+---
+
+## Roadmap & JTBD
+
+`docs/ROADMAP.md` — georganiseerd rond **Jobs to be Done**: welke taak probeert de gebruiker bereiken, in welke situatie, en waarom? Features worden gekoppeld aan een job, niet los opgesomd.
+
+Versie-bestanden: `docs/roadmap/00N-vX.Y.Z.md` — MoSCoW per versie (Must / Nice-to-have / Out of scope).
 
 ---
 
