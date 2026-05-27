@@ -12,6 +12,7 @@ const (
 	appName   = "CEDA Store"
 	minWidth  = 80
 	minHeight = 24
+	maxWidth  = 120
 )
 
 type Model struct {
@@ -43,6 +44,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// contentWidth returns the capped content width and left margin for centering.
+func (m Model) contentWidth() (width, margin int) {
+	w := m.width
+	if w > maxWidth {
+		w = maxWidth
+	}
+	margin = (m.width - w) / 2
+	return w, margin
+}
+
 func (m Model) View() string {
 	if !m.ready {
 		return ""
@@ -53,11 +64,14 @@ func (m Model) View() string {
 		return styles.Warning.Render(msg)
 	}
 
-	header := styles.Header.Width(m.width).Render(appName)
-	body := styles.Body.
-		Width(m.width).
+	cw, margin := m.contentWidth()
+	pad := lipgloss.NewStyle().PaddingLeft(margin)
+
+	header := pad.Render(styles.Header.Width(cw).Render(appName))
+	body := pad.Render(styles.Body.
+		Width(cw).
 		Height(m.height - lipgloss.Height(header)).
-		Render("")
+		Render(""))
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, body)
 }
