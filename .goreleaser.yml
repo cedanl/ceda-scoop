@@ -49,6 +49,6 @@ changelog:
 release:
   github:
     owner: cedanl
-    name: ceda-scoop
+    name: ceda-store
   draft: false
   prerelease: auto
