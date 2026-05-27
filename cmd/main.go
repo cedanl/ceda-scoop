@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 func main() {
 	f, err := os.OpenFile("debug.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
