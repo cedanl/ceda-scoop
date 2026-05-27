@@ -36,6 +36,7 @@ type Model struct {
 	width       int
 	height      int
 	ready       bool
+	showHelp    bool
 	version     string
 	latestVer   string
 	updateState updateState
@@ -64,6 +65,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "?":
+			m.showHelp = !m.showHelp
+			return m, nil
 		case "u":
 			if m.updateState == updateAvailable {
 				m.updateState = updateDownloading
@@ -126,7 +130,11 @@ func (m Model) View() string {
 	header := pad.Render(styles.Header.Width(cw).Render(appName))
 	statusBar := pad.Render(m.renderStatusBar(cw))
 	bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(statusBar)
-	body := pad.Render(styles.Body.Width(cw).Height(bodyHeight).Render(""))
+	var bodyContent string
+	if m.showHelp {
+		bodyContent = m.renderHelp()
+	}
+	body := pad.Render(styles.Body.Width(cw).Height(bodyHeight).Render(bodyContent))
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, statusBar)
 }
@@ -159,6 +167,21 @@ func (m Model) renderStatusBar(width int) string {
 
 	bar := left + styles.Subtle.Render(fmt.Sprintf("%*s", gap, "")) + right
 	return styles.Body.Width(width).Render(bar)
+}
+
+func (m Model) renderHelp() string {
+	bindings := []struct{ key, desc string }{
+		{"q / ctrl+c", "afsluiten"},
+		{"?", "help tonen/verbergen"},
+		{"u", "update downloaden / herstarten"},
+	}
+	var lines []string
+	for _, b := range bindings {
+		key := styles.Accent.Render(fmt.Sprintf("  %-14s", b.key))
+		lines = append(lines, key+styles.Subtle.Render(b.desc))
+	}
+	box := styles.BorderBox.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return "\n" + box
 }
 
 // checkUpdateCmd runs the GitHub API check off the main goroutine.
