@@ -1,12 +1,18 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/cedanl/ceda-scoop/internal/styles"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-const appName = "CEDA Store"
+const (
+	appName   = "CEDA Store"
+	minWidth  = 80
+	minHeight = 24
+)
 
 type Model struct {
 	width  int
@@ -35,6 +41,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	if !m.ready {
 		return ""
+	}
+
+	if m.width < minWidth || m.height < minHeight {
+		msg := fmt.Sprintf("Terminal te klein — minimaal %dx%d (nu %dx%d). Vergroot het venster.", minWidth, minHeight, m.width, m.height)
+		return styles.Warning.Render(msg)
 	}
 
 	header := styles.Header.Width(m.width).Render(appName)
