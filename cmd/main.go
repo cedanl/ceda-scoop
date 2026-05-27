@@ -20,7 +20,7 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	p := tea.NewProgram(ui.New(), tea.WithAltScreen())
+	p := tea.NewProgram(ui.New(Version), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

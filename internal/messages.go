@@ -1,4 +1,13 @@
 package internal
 
-// All Msg types live here — see CLAUDE.md architecture section.
-// Screen transition messages are added as new screens are built.
+// UpdateCheckDoneMsg carries the result of the async GitHub version check.
+type UpdateCheckDoneMsg struct {
+	Latest string
+	Err    error
+}
+
+// UpdateDownloadDoneMsg carries the result of a binary download.
+type UpdateDownloadDoneMsg struct {
+	Path string // path to new binary (Unix: current exe replaced; Windows: *-update.exe)
+	Err  error
+}
